@@ -2,16 +2,16 @@ import * as anchor from '@project-serum/anchor';
 import * as fs from 'fs';
 import { Program, BN } from '@project-serum/anchor';
 import { ChainlinkSolanaDemo } from '../target/types/chainlink_solana_demo';
-const assert = require("assert");
+import { createMintToInstruction, getOrCreateAssociatedTokenAccount } from '@solana/spl-token';
+import assert from "assert";
 
 const CHAINLINK_PROGRAM_ID = "HEvSKofvBgfaexv23kMabbYqxasxU3mQ4ibBMEmJWHny";
 // SOL/USD feed account
-const CHAINLINK_FEED = "2ypeVyYnZaW2TNYXXTaZq9YhYvnqcjCiifW1C6n8b7Go";
+const CHAINLINK_FEED = "CcPVS9bqyXbD9cLnTbhhHazLsrua8QMFUHTutPtjyDzq";
 const DIVISOR = 100000000;
 
 describe('chainlink-solana-demo', () => {
-  const provider = anchor.Provider.env();
-
+  const provider = anchor.AnchorProvider.env();
   // Configure the client to use the local cluster.
   anchor.setProvider(provider);
 
@@ -45,4 +45,32 @@ describe('chainlink-solana-demo', () => {
     assert.ok(latestPrice.value / DIVISOR > 0);
 
   });
+
+  it("mints some usdc", async () => {
+    const USDC_MINT = new anchor.web3.PublicKey("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
+    const payer = (provider.wallet as anchor.Wallet).payer;
+    assert.ok(payer.publicKey.toBase58() == provider.wallet.publicKey.toBase58())
+
+    //create associated token account
+    let usdcTokenAccount = await getOrCreateAssociatedTokenAccount(
+      provider.connection, //connection
+      payer, //payer
+      USDC_MINT, //mint
+      payer.publicKey, //owner
+    )
+
+    //mint tokens
+    const mintTokenTX = new anchor.web3.Transaction();
+    mintTokenTX.add(createMintToInstruction(
+      USDC_MINT,
+      usdcTokenAccount.address,
+      payer.publicKey,
+      1000 * 10 ** 6, //1000 usdc tokens
+    ));
+    await provider.sendAndConfirm(mintTokenTX,);
+
+    const newBalance = await provider.connection.getTokenAccountBalance(usdcTokenAccount.address)
+    console.log(newBalance);
+    assert.equal(Number(newBalance.value.uiAmount), 1000)
+  })
 });
